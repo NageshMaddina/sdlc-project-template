@@ -1,0 +1,16 @@
+# One entry per SLO. Added by /observe from the story's design spec.
+slos:
+  - name: api-availability
+    description: Non-5xx share of API requests
+    sli: sum(rate(http_server_requests_total{status!~"5.."}[5m])) / sum(rate(http_server_requests_total[5m]))
+    objective: 0.995
+    window: 28d
+    owner: "[you]"
+    traces_to: [NFR-002]
+  - name: api-latency-p95
+    description: Share of API requests faster than 800 ms
+    sli: sum(rate(http_server_duration_bucket{le="0.8"}[5m])) / sum(rate(http_server_duration_count[5m]))
+    objective: 0.95
+    window: 28d
+    owner: "[you]"
+    traces_to: [NFR-001]

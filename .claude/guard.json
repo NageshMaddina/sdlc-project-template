@@ -1,0 +1,24 @@
+{
+  "_comment": "Read by .claude/hooks/*.mjs. Protected from Claude; edit it yourself. Paths are relative to the repo root and match by prefix.",
+  "requireApprovedPlan": true,
+  "planDir": "docs/plans",
+  "workIdPattern": "(US|BUG|CHG)-\\d{3,}",
+  "protectedBranches": ["main", "master"],
+  "codePaths": ["src/", "tests/", "drizzle/", "scripts/", "design/", "public/", "observability/", "package.json", "pnpm-lock.yaml", "Dockerfile", "docker-compose.yml"],
+  "frozenWhenApprovedPaths": ["docs/requirements/", "docs/design/", "docs/adr/", "docs/plans/"],
+  "protectedPaths": [
+    ".claude/settings.json",
+    ".claude/settings.local.json",
+    ".claude/hooks/",
+    ".claude/guard.json",
+    ".github/workflows/",
+    ".github/actions/",
+    ".github/CODEOWNERS",
+    "tests/visual/__screenshots__/"
+  ],
+  "secretPaths": [".env", ".env.local", ".env.development", ".env.production", ".env.staging"],
+  "stopGate": {
+    "enabled": true,
+    "commands": ["pnpm -s typecheck", "pnpm -s test:unit"]
+  }
+}

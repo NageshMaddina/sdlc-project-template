@@ -1,0 +1,39 @@
+# Outside-in monitoring: probe production every 15 minutes; open (or update) an incident issue on failure.
+name: Synthetic check
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  probe:
+    if: vars.PROD_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe readiness (2 attempts)
+        id: probe
+        run: |
+          for i in 1 2; do
+            start=$(date +%s%3N)
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "${{ vars.PROD_URL }}/api/readyz" || echo 000)
+            ms=$(( $(date +%s%3N) - start ))
+            echo "attempt $i: $code in ${ms}ms"
+            if [ "$code" = "200" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+            sleep 30
+          done
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+      - name: Open or update incident
+        if: steps.probe.outputs.ok == 'false'
+        env: { GH_TOKEN: "${{ github.token }}", GH_REPO: "${{ github.repository }}" }
+        run: |
+          existing=$(gh issue list --label incident --state open --json number --jq '.[0].number')
+          body="Synthetic check failed at $(date -u +%FT%TZ): /api/readyz returned ${{ steps.probe.outputs.code }}. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -n "$existing" ]; then gh issue comment "$existing" --body "$body";
+          else gh label create incident --color B60205 2>/dev/null || true; gh issue create --title "Production readiness check failing" --label incident --body "$body"; fi
+          exit 1

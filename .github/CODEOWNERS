@@ -1,0 +1,6 @@
+# Replace @your-github-username. Changes to these paths always need your review.
+*                       @your-github-username
+/.claude/               @your-github-username
+/.github/               @your-github-username
+/docs/requirements/     @your-github-username
+/docs/adr/              @your-github-username

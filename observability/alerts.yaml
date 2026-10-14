@@ -1,0 +1,22 @@
+# Multi-window burn-rate alerts (Prometheus rule format; import into Grafana Cloud alerting).
+groups:
+  - name: slo-burn
+    rules:
+      - alert: ApiAvailabilityFastBurn
+        expr: |
+          (1 - (sum(rate(http_server_requests_total{status!~"5.."}[1h])) / sum(rate(http_server_requests_total[1h])))) > (14.4 * 0.005)
+          and
+          (1 - (sum(rate(http_server_requests_total{status!~"5.."}[5m])) / sum(rate(http_server_requests_total[5m])))) > (14.4 * 0.005)
+        labels: { severity: page, slo: api-availability }
+        annotations:
+          summary: API error budget burning fast (2 % of monthly budget in 1 hour)
+          runbook: docs/runbook.md#api-availability
+      - alert: ApiAvailabilitySlowBurn
+        expr: |
+          (1 - (sum(rate(http_server_requests_total{status!~"5.."}[6h])) / sum(rate(http_server_requests_total[6h])))) > (6 * 0.005)
+          and
+          (1 - (sum(rate(http_server_requests_total{status!~"5.."}[30m])) / sum(rate(http_server_requests_total[30m])))) > (6 * 0.005)
+        labels: { severity: ticket, slo: api-availability }
+        annotations:
+          summary: API error budget burning steadily
+          runbook: docs/runbook.md#api-availability

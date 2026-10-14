@@ -1,0 +1,29 @@
+name: Smoke tests
+description: Health, readiness, then the Playwright tests tagged @smoke against a deployed URL.
+inputs:
+  base-url:
+    description: Deployed base URL
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Wait for health and readiness
+      shell: bash
+      run: |
+        for path in /api/healthz /api/readyz; do
+          for i in $(seq 1 20); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${{ inputs.base-url }}$path" || true)
+            [ "$code" = "200" ] && echo "$path ok" && break
+            [ "$i" = "20" ] && echo "$path returned $code" && exit 1
+            sleep 6
+          done
+        done
+    - uses: pnpm/action-setup@v4
+    - uses: actions/setup-node@v4
+      with: { node-version: "22", cache: pnpm }
+    - shell: bash
+      run: pnpm install --frozen-lockfile && pnpm exec playwright install --with-deps chromium
+    - shell: bash
+      run: pnpm test:e2e --grep @smoke
+      env:
+        BASE_URL: ${{ inputs.base-url }}

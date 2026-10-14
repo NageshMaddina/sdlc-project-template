@@ -1,0 +1,78 @@
+# Promotion: the image CI built for a commit is deployed unchanged to staging, then production.
+#   - main passes CI            → staging (automatic) → smoke tests
+#   - tag vX.Y.Z pushed         → production (waits for approval in the `production` environment) → smoke tests
+#   - manual run (rollback)     → chosen environment with a chosen image tag (a previous commit SHA)
+# Setup: GitHub environments `staging` and `production` (add yourself as required reviewer on production),
+# secret FLY_API_TOKEN, variables FLY_APP_STAGING, FLY_APP_PROD, STAGING_URL, PROD_URL.
+# The GHCR package must be public, or switch IMAGE to registry.fly.io (see docs/runbook.md).
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: staging or production
+        type: choice
+        options: [staging, production]
+        required: true
+      image_tag:
+        description: Commit SHA of the image to deploy (use the previous good SHA to roll back)
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment || (github.event_name == 'push' && 'production' || 'staging') }}
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    runs-on: ubuntu-latest
+    environment: { name: staging, url: "${{ vars.STAGING_URL }}" }
+    env:
+      TAG: ${{ github.event.inputs.image_tag || github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${TAG}" >> "$GITHUB_ENV"
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy image
+        run: flyctl deploy --app "${{ vars.FLY_APP_STAGING }}" --image "$IMAGE" --strategy rolling
+        env: { FLY_API_TOKEN: "${{ secrets.FLY_API_TOKEN }}" }
+      - name: Smoke tests
+        uses: ./.github/actions/smoke
+        with: { base-url: "${{ vars.STAGING_URL }}" }
+      - run: echo "Deployed \`$TAG\` to staging." >> "$GITHUB_STEP_SUMMARY"
+
+  production:
+    if: >-
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    runs-on: ubuntu-latest
+    environment: { name: production, url: "${{ vars.PROD_URL }}" } # required reviewer = human approval gate
+    env:
+      TAG: ${{ github.event.inputs.image_tag || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.TAG }}" }
+      - run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}:${TAG}" >> "$GITHUB_ENV"
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Deploy image
+        run: flyctl deploy --app "${{ vars.FLY_APP_PROD }}" --image "$IMAGE" --strategy rolling
+        env: { FLY_API_TOKEN: "${{ secrets.FLY_API_TOKEN }}" }
+      - name: Smoke tests
+        uses: ./.github/actions/smoke
+        with: { base-url: "${{ vars.PROD_URL }}" }
+      - run: |
+          echo "Deployed \`$TAG\` to production." >> "$GITHUB_STEP_SUMMARY"
+          echo "Rollback: run this workflow manually with environment=production and the previous good SHA." >> "$GITHUB_STEP_SUMMARY"
